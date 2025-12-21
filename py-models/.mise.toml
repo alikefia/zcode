@@ -1,0 +1,14 @@
+[env]
+_.python.venv = ".venv"
+
+[tasks."code:fmt"]
+run = "ruff format {{config_root}}"
+
+[tasks."code:lint"]
+run = "ruff check --fix {{config_root}}"
+
+[tasks.clean]
+run = [
+  "find . -name '*.pyc' | grep -v '\\.venv' | xargs rm",
+  "find . -name '__pycache__' | grep -v '\\.venv' | xargs rmdir",
+]
