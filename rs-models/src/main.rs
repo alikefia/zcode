@@ -1,38 +1,33 @@
-#[cfg(feature = "mkl")]
-extern crate intel_mkl_src;
-
-#[cfg(feature = "accelerate")]
 extern crate accelerate_src;
 
 use anyhow::{Error as E, Result};
 use clap::Parser;
 
+mod hf_load;
+mod token_output_stream;
+
 use candle_transformers::models::qwen2::{Config as ConfigBase, ModelForCausalLM as ModelBase};
 use candle_transformers::models::qwen2_moe::{Config as ConfigMoe, Model as ModelMoe};
-use candle_transformers::models::qwen3::{Config as Config3, ModelForCausalLM as Model3};
-use candle_transformers::models::qwen3_moe::{Config as ConfigMoe3, ModelForCausalLM as ModelMoe3};
 
-use candle::{DType, Device, Tensor};
-use candle_examples::token_output_stream::TokenOutputStream;
+use candle_core::{DType, Device, Tensor};
 use candle_nn::VarBuilder;
 use candle_transformers::generation::LogitsProcessor;
+
 use hf_hub::{Repo, RepoType, api::sync::Api};
+
+use token_output_stream::TokenOutputStream;
 use tokenizers::Tokenizer;
 
 enum Model {
     Base(ModelBase),
     Moe(ModelMoe),
-    Base3(Model3),
-    Moe3(ModelMoe3),
 }
 
 impl Model {
-    fn forward(&mut self, xs: &Tensor, s: usize) -> candle::Result<Tensor> {
+    fn forward(&mut self, xs: &Tensor, s: usize) -> candle_core::Result<Tensor> {
         match self {
-            Self::Moe(ref mut m) => m.forward(xs, s),
-            Self::Base(ref mut m) => m.forward(xs, s),
-            Self::Base3(ref mut m) => m.forward(xs, s),
-            Self::Moe3(ref mut m) => m.forward(xs, s),
+            Self::Moe(m) => m.forward(xs, s),
+            Self::Base(m) => m.forward(xs, s),
         }
     }
 }
@@ -245,10 +240,10 @@ fn main() -> Result<()> {
     };
     println!(
         "avx: {}, neon: {}, simd128: {}, f16c: {}",
-        candle::utils::with_avx(),
-        candle::utils::with_neon(),
-        candle::utils::with_simd128(),
-        candle::utils::with_f16c()
+        candle_core::utils::with_avx(),
+        candle_core::utils::with_neon(),
+        candle_core::utils::with_simd128(),
+        candle_core::utils::with_f16c()
     );
     println!(
         "temp: {:.2} repeat-penalty: {:.2} repeat-last-n: {}",
@@ -316,7 +311,7 @@ fn main() -> Result<()> {
             | WhichModel::W3_4b
             | WhichModel::W3_8b
             | WhichModel::W3MoeA3b => {
-                candle_examples::hub_load_safetensors(&repo, "model.safetensors.index.json")?
+                hf_load::hub_load_safetensors(&repo, "model.safetensors.index.json")?
             }
         },
     };
@@ -325,25 +320,13 @@ fn main() -> Result<()> {
 
     let start = std::time::Instant::now();
     let config_file = repo.get("config.json")?;
-    let device = candle_examples::device(args.cpu)?;
-    let dtype = if device.is_cuda() || device.is_metal() {
-        DType::BF16
-    } else {
-        DType::F32
-    };
+    let device = Device::new_metal(0)?;
+    let dtype = DType::BF16;
     let vb = unsafe { VarBuilder::from_mmaped_safetensors(&filenames, dtype, &device)? };
     let model = match args.model {
         WhichModel::MoeA27b => {
             let config: ConfigMoe = serde_json::from_slice(&std::fs::read(config_file)?)?;
             Model::Moe(ModelMoe::new(&config, vb)?)
-        }
-        WhichModel::W3_0_6b | WhichModel::W3_1_7b | WhichModel::W3_4b | WhichModel::W3_8b => {
-            let config: Config3 = serde_json::from_slice(&std::fs::read(config_file)?)?;
-            Model::Base3(Model3::new(&config, vb)?)
-        }
-        WhichModel::W3MoeA3b => {
-            let config: ConfigMoe3 = serde_json::from_slice(&std::fs::read(config_file)?)?;
-            Model::Moe3(ModelMoe3::new(&config, vb)?)
         }
         _ => {
             let config: ConfigBase = serde_json::from_slice(&std::fs::read(config_file)?)?;
