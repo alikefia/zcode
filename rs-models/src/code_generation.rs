@@ -5,71 +5,92 @@ use candle_transformers::generation::LogitsProcessor;
 use candle_transformers::models::qwen2::ModelForCausalLM;
 use tokenizers::Tokenizer;
 
-use crate::token_output_stream::TokenOutputStream;
+const DEFAULT_SEED: u64 = 299792458;
+const DEFAULT_TEMPERATURE: f64 = 0.5;
+const DEFAULT_REPEAT_PENALTY: f32 = 1.1;
+const DEFAULT_REPEAT_LAST_N: usize = 64;
+
+const DEFAULT_MAX_NEW_TOKENS: usize = 128;
 
 pub(crate) struct CodeGeneration {
-    model: ModelForCausalLM,
     device: Device,
-    tokenizer: TokenOutputStream,
+    model: ModelForCausalLM,
+    tokenizer: Tokenizer,
     logits_processor: LogitsProcessor,
     repeat_penalty: f32,
     repeat_last_n: usize,
+    eos_tokens: Vec<u32>,
 }
 
 impl CodeGeneration {
     pub fn new(
+        device: &Device,
         model: ModelForCausalLM,
         tokenizer: Tokenizer,
-        seed: u64,
+        seed: Option<u64>,
         temperature: Option<f64>,
         top_p: Option<f64>,
-        repeat_penalty: f32,
-        repeat_last_n: usize,
-        device: &Device,
+        repeat_penalty: Option<f32>,
+        repeat_last_n: Option<usize>,
     ) -> Self {
-        let logits_processor = LogitsProcessor::new(seed, temperature, top_p);
-        Self {
-            model,
-            tokenizer: TokenOutputStream::new(tokenizer),
-            logits_processor,
-            repeat_penalty,
-            repeat_last_n,
+        let logits_processor = LogitsProcessor::new(
+            match seed {
+                Some(v) => v,
+                None => DEFAULT_SEED,
+            },
+            match temperature {
+                Some(v) => Some(v),
+                None => Some(DEFAULT_TEMPERATURE),
+            },
+            top_p,
+        );
+        let mut r = Self {
             device: device.clone(),
+            model: model,
+            tokenizer: tokenizer,
+            logits_processor,
+            repeat_penalty: match repeat_penalty {
+                Some(v) => v,
+                None => DEFAULT_REPEAT_PENALTY,
+            },
+            repeat_last_n: match repeat_last_n {
+                Some(v) => v,
+                None => DEFAULT_REPEAT_LAST_N,
+            },
+            eos_tokens: vec![],
+        };
+
+        if let Some(v) = r.get_token("<|endoftext|>") {
+            r.eos_tokens.push(v);
         }
+        if let Some(v) = r.get_token("<|im_end|>") {
+            r.eos_tokens.push(v);
+        }
+        r
     }
 
-    pub fn run(&mut self, prompt: &str, sample_len: usize) -> Result<()> {
-        use std::io::Write;
-        self.tokenizer.clear();
+    fn get_token(&self, text: &str) -> Option<u32> {
+        self.tokenizer.get_vocab(true).get(text).copied()
+    }
+
+    pub fn run(&mut self, prompt: &str, max_new_tokens: Option<usize>) -> Result<()> {
+        let max_new_tokens = match max_new_tokens {
+            Some(v) => v,
+            None => DEFAULT_MAX_NEW_TOKENS,
+        };
         let mut tokens = self
             .tokenizer
-            .tokenizer()
             .encode(prompt, true)
             .map_err(E::msg)?
             .get_ids()
             .to_vec();
-        for &t in tokens.iter() {
-            if let Some(t) = self.tokenizer.next_token(t)? {
-                print!("{t}")
-            }
-        }
-        std::io::stdout().flush()?;
-
-        let mut generated_tokens = 0usize;
-        let eos_token = match self.tokenizer.get_token("<|endoftext|>") {
-            Some(token) => token,
-            None => anyhow::bail!("cannot find the <|endoftext|> token"),
-        };
-        let eos_token2 = match self.tokenizer.get_token("<|im_end|>") {
-            Some(token) => token,
-            None => anyhow::bail!("cannot find the <|im_end|> token"),
-        };
-        let start_gen = std::time::Instant::now();
-        for index in 0..sample_len {
-            let context_size = if index > 0 { 1 } else { tokens.len() };
-            let start_pos = tokens.len().saturating_sub(context_size);
-            let ctxt = &tokens[start_pos..];
-            let input = Tensor::new(ctxt, &self.device)?.unsqueeze(0)?;
+        let tokens_in_len = tokens.len();
+        let start_time = std::time::Instant::now();
+        for index in 0..max_new_tokens {
+            let ctx_size = if index > 0 { 1 } else { tokens.len() };
+            let start_pos = tokens.len().saturating_sub(ctx_size);
+            let ctx = &tokens[start_pos..];
+            let input = Tensor::new(ctx, &self.device)?.unsqueeze(0)?;
             let logits = self.model.forward(&input, start_pos)?;
             let logits = logits.squeeze(0)?.squeeze(0)?.to_dtype(DType::F32)?;
             let logits = if self.repeat_penalty == 1. {
@@ -82,26 +103,20 @@ impl CodeGeneration {
                     &tokens[start_at..],
                 )?
             };
-
             let next_token = self.logits_processor.sample(&logits)?;
             tokens.push(next_token);
-            generated_tokens += 1;
-            if next_token == eos_token || next_token == eos_token2 {
+            if self.eos_tokens.contains(&next_token) {
                 break;
             }
-            if let Some(t) = self.tokenizer.next_token(next_token)? {
-                print!("{t}");
-                std::io::stdout().flush()?;
-            }
         }
-        let dt = start_gen.elapsed();
-        if let Some(rest) = self.tokenizer.decode_rest().map_err(E::msg)? {
-            print!("{rest}");
-        }
-        std::io::stdout().flush()?;
+        let generated = self
+            .tokenizer
+            .decode(&tokens[tokens_in_len..], true)
+            .map_err(E::msg)?;
+        println!("{}", generated);
         println!(
-            "\n{generated_tokens} tokens generated ({:.2} token/s)",
-            generated_tokens as f64 / dt.as_secs_f64(),
+            "rate: {} t/s",
+            (tokens.len() - tokens_in_len) as u64 / start_time.elapsed().as_secs()
         );
         Ok(())
     }

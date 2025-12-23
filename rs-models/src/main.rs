@@ -9,35 +9,15 @@ use hf_hub::{Repo, RepoType, api::sync::Api};
 use tokenizers::Tokenizer;
 
 mod code_generation;
-mod token_output_stream;
-
 use code_generation::CodeGeneration;
 
 const MODEL_ID: &str = "Qwen/Qwen2.5-Coder-1.5B";
 const MODEL_REV: &str = "df3ce67c0e24480f20468b6ef2894622d69eb73b";
-
-const SEED: u64 = 299792458;
-
-const TEMPERATURE: Option<f64> = Some(0.5);
-const TOP_P: Option<f64> = None;
-
-const REPEAT_PENALTY: f32 = 1.1;
-const REPEAT_LAST_N: usize = 64;
-
 const PROMPT: &str = r"
 def slice(l: list[Any], *, n: int) -> Generator:
      ";
-const MAX_NEW_TOKENS: usize = 128;
 
 fn main() -> Result<()> {
-    println!(
-        "avx: {}, neon: {}, simd128: {}, f16c: {}",
-        candle_core::utils::with_avx(),
-        candle_core::utils::with_neon(),
-        candle_core::utils::with_simd128(),
-        candle_core::utils::with_f16c()
-    );
-
     let start = std::time::Instant::now();
     let api = Api::new()?;
     let repo = api.repo(Repo::with_revision(
@@ -58,17 +38,6 @@ fn main() -> Result<()> {
     let model = ModelForCausalLM::new(&serde_json::from_slice(&std::fs::read(config_file)?)?, vb)?;
     println!("loaded the model in {:?}", start.elapsed());
 
-    let mut pipeline = CodeGeneration::new(
-        model,
-        tokenizer,
-        SEED,
-        TEMPERATURE,
-        TOP_P,
-        REPEAT_PENALTY,
-        REPEAT_LAST_N,
-        &device,
-    );
-
-    pipeline.run(PROMPT, MAX_NEW_TOKENS)?;
-    Ok(())
+    let mut pipeline = CodeGeneration::new(&device, model, tokenizer, None, None, None, None, None);
+    pipeline.run(PROMPT, None)
 }
