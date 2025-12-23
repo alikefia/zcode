@@ -5,12 +5,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 code = """
 def slice(l: list[Any], *, n: int) -> Generator:
-    
-"""
+    """
 models = {
     "Qwen/Qwen2.5-Coder-0.5B": "8123ea2e9354afb7ffcc6c8641d1b2f5ecf18301",
     "Qwen/Qwen2.5-Coder-1.5B": "df3ce67c0e24480f20468b6ef2894622d69eb73b",
-    "Qwen/Qwen2.5-Coder-3B": "09d9bc5d376b0cfa0100a0694ea7de7232525803",
 }
 
 
@@ -32,21 +30,21 @@ def run(model_name, model_rev, prompt):
     start = time()
     model_inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     generated_ids = model.generate(**model_inputs, max_new_tokens=128)
-    generated_ids = [
-        output_ids[len(input_ids) :]
-        for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-    ]
-    return tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[
-        0
-    ], time() - start
+    input_ids = model_inputs.input_ids[0]
+    generated_ids = generated_ids[0]
+    new_ids = generated_ids[len(input_ids) :]
+    return (
+        tokenizer.batch_decode([new_ids], skip_special_tokens=True)[0],
+        len(new_ids) / (time() - start),
+    )
 
 
 def main():
     for model_name, model_rev in models.items():
         print(f"\n## {model_name} ##\n")
-        res, t = run(model_name, model_rev, code)
+        res, rate = run(model_name, model_rev, code)
         print(res)
-        print(f"\ndone in {t:.2f}\n")
+        print(f"\nrate: {rate:.2f}t/s\n")
 
 
 if __name__ == "__main__":

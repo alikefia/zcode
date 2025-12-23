@@ -24,7 +24,9 @@ const TOP_P: Option<f64> = None;
 const REPEAT_PENALTY: f32 = 1.1;
 const REPEAT_LAST_N: usize = 64;
 
-const PROMPT: &str = "Hello";
+const PROMPT: &str = r"
+def slice(l: list[Any], *, n: int) -> Generator:
+     ";
 const MAX_NEW_TOKENS: usize = 128;
 
 fn main() -> Result<()> {
