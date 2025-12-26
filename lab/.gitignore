@@ -1,5 +1,7 @@
-.venv/
 __pycache__/
+
+.venv/
+uv.lock
+
 build/
 dist/
-uv.lock

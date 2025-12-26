@@ -16,8 +16,7 @@ const MODEL_REV: &str = "df3ce67c0e24480f20468b6ef2894622d69eb73b";
 const PROMPT: &str = r"
 def slice(l: list[Any], *, n: int) -> Generator:
      ";
-
-fn main() -> Result<()> {
+pub(crate) fn run() -> Result<()> {
     let start = std::time::Instant::now();
     let api = Api::new()?;
     let repo = api.repo(Repo::with_revision(
