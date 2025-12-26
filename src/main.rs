@@ -1,17 +1,37 @@
-use tower_lsp::{LspService, Server};
+use clap::{Parser, Subcommand};
 
 mod llm;
-
 mod lsp;
-use lsp::Backend;
+
+#[derive(Parser)]
+#[command(name = "zc")]
+#[command(about = "A locally running code assistant ", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Launch the LSP server
+    Lsp,
+    /// Runs the llm for test complete
+    Llm,
+}
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt().init();
 
-    let stdin = tokio::io::stdin();
-    let stdout = tokio::io::stdout();
+    let cli = Cli::parse();
 
-    let (service, socket) = LspService::new(|client| Backend { client });
-    Server::new(stdin, stdout, socket).serve(service).await;
+    match cli.command {
+        Commands::Lsp => lsp::run().await,
+        Commands::Llm => {
+            if let Err(e) = llm::run() {
+                eprintln!("Error running LLM: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 }

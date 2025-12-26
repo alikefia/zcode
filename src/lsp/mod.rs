@@ -1,11 +1,11 @@
 use serde_json::Value;
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
-use tower_lsp::{Client, LanguageServer};
+use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 #[derive(Debug)]
-pub(crate) struct Backend {
-    pub client: Client,
+struct Backend {
+    client: Client,
 }
 
 #[tower_lsp::async_trait]
@@ -113,4 +113,12 @@ impl LanguageServer for Backend {
             CompletionItem::new_simple("Bye".to_string(), "More detail".to_string()),
         ])))
     }
+}
+
+pub async fn run() {
+    let stdin = tokio::io::stdin();
+    let stdout = tokio::io::stdout();
+
+    let (service, socket) = LspService::new(|client| Backend { client });
+    Server::new(stdin, stdout, socket).serve(service).await;
 }

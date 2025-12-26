@@ -12,7 +12,7 @@ const DEFAULT_REPEAT_LAST_N: usize = 64;
 
 const DEFAULT_MAX_NEW_TOKENS: usize = 128;
 
-pub(crate) struct CodeGeneration {
+pub(super) struct CodeGeneration {
     device: Device,
     model: ModelForCausalLM,
     tokenizer: Tokenizer,
