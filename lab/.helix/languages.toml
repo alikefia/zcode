@@ -1,6 +1,6 @@
 [language-server.zcode]
-command = "rs-lsp"
-args = []
+command = "zc"
+args = ["lsp"]
 
 [[language]]
 name = "markdown"

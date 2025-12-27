@@ -1,5 +1,6 @@
 [env]
 _.python.venv = ".venv"
+'_'.path.path = "../target/debug"
 
 [tasks."code:fmt"]
 run = "ruff format {{config_root}}"
