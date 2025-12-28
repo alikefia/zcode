@@ -1,6 +1,9 @@
+use std::path::PathBuf;
+
 use anyhow::{Error as E, Result};
 
 use candle_core::{DType, Device, Tensor};
+use candle_nn::VarBuilder;
 use candle_transformers::generation::LogitsProcessor;
 use candle_transformers::models::qwen2::ModelForCausalLM;
 use tokenizers::Tokenizer;
@@ -10,9 +13,13 @@ const DEFAULT_TEMPERATURE: f64 = 0.5;
 const DEFAULT_REPEAT_PENALTY: f32 = 1.1;
 const DEFAULT_REPEAT_LAST_N: usize = 64;
 
-const DEFAULT_MAX_NEW_TOKENS: usize = 128;
+pub(super) struct ModelFiles {
+    pub config_file: PathBuf,
+    pub tokenizer_file: PathBuf,
+    pub weights_files: Vec<PathBuf>,
+}
 
-pub(super) struct CodeGeneration {
+pub(super) struct Generator {
     device: Device,
     model: ModelForCausalLM,
     tokenizer: Tokenizer,
@@ -22,17 +29,22 @@ pub(super) struct CodeGeneration {
     eos_tokens: Vec<u32>,
 }
 
-impl CodeGeneration {
+impl Generator {
     pub fn new(
+        files: &ModelFiles,
         device: &Device,
-        model: ModelForCausalLM,
-        tokenizer: Tokenizer,
+        dtype: DType,
         seed: Option<u64>,
         temperature: Option<f64>,
         top_p: Option<f64>,
         repeat_penalty: Option<f32>,
         repeat_last_n: Option<usize>,
-    ) -> Self {
+    ) -> Result<Self> {
+        let config = serde_json::from_slice(&std::fs::read(files.config_file.to_owned())?)?;
+        let tokenizer = Tokenizer::from_file(files.tokenizer_file.to_owned()).map_err(E::msg)?;
+        let vb =
+            unsafe { VarBuilder::from_mmaped_safetensors(&files.weights_files, dtype, device)? };
+        let model = ModelForCausalLM::new(&config, vb)?;
         let logits_processor = LogitsProcessor::new(
             match seed {
                 Some(v) => v,
@@ -66,18 +78,14 @@ impl CodeGeneration {
         if let Some(v) = r.get_token("<|im_end|>") {
             r.eos_tokens.push(v);
         }
-        r
+        Ok(r)
     }
 
     fn get_token(&self, text: &str) -> Option<u32> {
         self.tokenizer.get_vocab(true).get(text).copied()
     }
 
-    pub fn run(&mut self, prompt: &str, max_new_tokens: Option<usize>) -> Result<()> {
-        let max_new_tokens = match max_new_tokens {
-            Some(v) => v,
-            None => DEFAULT_MAX_NEW_TOKENS,
-        };
+    pub fn generate(&mut self, prompt: &str, max_new_tokens: usize) -> Result<()> {
         let mut tokens = self
             .tokenizer
             .encode(prompt, true)

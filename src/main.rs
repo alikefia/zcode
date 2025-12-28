@@ -6,6 +6,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 
 mod llm;
 mod lsp;
+mod profiler;
 
 #[derive(Parser)]
 #[command(name = "zc")]

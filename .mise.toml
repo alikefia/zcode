@@ -1,0 +1,3 @@
+[tasks.logs]
+run = "jq < /tmp/zc.log.jsonl"
+
