@@ -119,11 +119,12 @@ impl LanguageServer for Backend {
     }
 }
 
-pub async fn run() {
+pub(crate) async fn run() -> Result<()> {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
     info!("Starting LSP server with tracing enabled");
     let (service, socket) = LspService::new(|client| Backend { client });
     Server::new(stdin, stdout, socket).serve(service).await;
+    Ok(())
 }

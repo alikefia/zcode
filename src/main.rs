@@ -1,3 +1,4 @@
+use anyhow::{Error as E, Result};
 use clap::{Parser, Subcommand};
 use std::fs::OpenOptions;
 use tracing_subscriber::EnvFilter;
@@ -31,7 +32,7 @@ enum Commands {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let trace_file = OpenOptions::new()
@@ -52,12 +53,7 @@ async fn main() {
         .init();
 
     match cli.command {
-        Commands::Lsp => lsp::run().await,
-        Commands::Llm => {
-            if let Err(e) = llm::run() {
-                eprintln!("Error running LLM: {}", e);
-                std::process::exit(1);
-            }
-        }
+        Commands::Lsp => lsp::run().await.map_err(E::msg),
+        Commands::Llm => llm::run(),
     }
 }
