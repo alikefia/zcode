@@ -34,16 +34,7 @@ fn get_repo_files(model_id: &str, model_rev: &str) -> Result<ModelFiles> {
 pub(crate) fn run() -> Result<()> {
     let files = with_profiler("model get", || get_repo_files(MODEL_ID, MODEL_REV))?;
     let mut generator = with_profiler("model load", || {
-        Generator::new(
-            &files,
-            &Device::new_metal(0)?,
-            DType::BF16,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        Generator::new_with_defaults(&files, &Device::new_metal(0)?, DType::BF16)
     })?;
     with_profiler("model infer", || {
         generator.generate(PROMPT, DEFAULT_MAX_NEW_TOKENS)

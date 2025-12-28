@@ -81,6 +81,10 @@ impl Generator {
         Ok(r)
     }
 
+    pub fn new_with_defaults(files: &ModelFiles, device: &Device, dtype: DType) -> Result<Self> {
+        Self::new(files, device, dtype, None, None, None, None, None)
+    }
+
     fn get_token(&self, text: &str) -> Option<u32> {
         self.tokenizer.get_vocab(true).get(text).copied()
     }
